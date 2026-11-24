@@ -110,5 +110,11 @@
   "topic": "The impact of innovation and resource duplication on market value.",
   "title": "The Strange Case of the Duplicating Berries",
   "date": "2026-11-20"
+ },
+ {
+  "topic": "Goodhart's Law",
+  "title": "The Village Where Measuring Ruined Everything",
+  "seed": "Goodhart's law: when a measure becomes a target it stops being good",
+  "date": "2026-11-24"
  }
 ]
