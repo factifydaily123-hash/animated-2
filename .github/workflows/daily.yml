@@ -2,8 +2,8 @@ name: Daily Parable Explainer Short
 
 on:
   schedule:
-    # Har ghante chalta hai, lekin "decide" job sirf 5 sec mein faisla karti hai.
-    # Har 2 din mein ek baar, ek random ghante mein asli kaam hota hai.
+    # Har ghante chalta hai, lekin "decide" job sirf chand second mein faisla karti hai.
+    # Roz ek baar, ek random ghante + random minute par asli kaam hota hai.
     - cron: "7 * * * *"
   workflow_dispatch:
     inputs:
@@ -20,7 +20,7 @@ concurrency:                 # do runs ek saath na chalein (history.json push co
   cancel-in-progress: false
 
 env:
-  MAX_DELAY_MIN: "15"
+  MAX_DELAY_MIN: "50"          # chune hue ghante ke andar random minute (0..50) tak intezar
   DO_UPLOAD: ${{ (github.event_name == 'workflow_dispatch' && inputs.upload == false) && 'false' || 'true' }}
 
 jobs:
@@ -30,6 +30,8 @@ jobs:
     outputs:
       go: ${{ steps.pick.outputs.go }}
     steps:
+      - uses: actions/checkout@v4      # history.json padhne ke liye (aaj upload ho chuki ya nahi)
+
       - name: Aaj is ghante chalna hai ya nahi?
         id: pick
         run: |
@@ -42,20 +44,23 @@ jobs:
 
           DAYS=$(( $(date -u +%s) / 86400 ))
           HOUR=$(( 10#$(date -u +%H) ))
+          TODAY=$(date -u +%F)
 
-          # Har 2 din mein ek baar
-          if [ $(( DAYS % 2 )) -ne 0 ]; then
-            echo "Aaj upload ka din nahi hai -> skip"
+          # Aaj pehle hi upload ho chuki? (history.json sirf kamyab upload ke baad commit hoti hai)
+          LAST=$(jq -r 'map(.date) | max // ""' history.json 2>/dev/null || echo "")
+          if [ "$LAST" = "$TODAY" ]; then
+            echo "Aaj ($TODAY) ki video ho chuki -> skip"
             echo "go=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Is din ka random ghanta (din se seed, to har ghante wahi jawab aata hai)
+          # Is din ka random ghanta 0..19 UTC (din se seed, to har ghante wahi jawab aata hai)
           HASH=$(echo "shorts-$DAYS" | md5sum | cut -c1-8)
-          TARGET=$(( 16#$HASH % 24 ))
+          TARGET=$(( 16#$HASH % 20 ))
           echo "Aaj ka random ghanta: $TARGET:xx UTC | abhi: $HOUR UTC"
 
-          if [ "$HOUR" -eq "$TARGET" ]; then
+          # Target ghante par chalao; cron late/miss ho ya run fail ho to agle 2 ghante tak dobara koshish
+          if [ "$HOUR" -ge "$TARGET" ] && [ "$HOUR" -le $(( TARGET + 2 )) ]; then
             echo "go=true" >> "$GITHUB_OUTPUT"
           else
             echo "go=false" >> "$GITHUB_OUTPUT"
@@ -65,7 +70,7 @@ jobs:
     needs: decide
     if: needs.decide.outputs.go == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 130          # random intezar (<=50 min) + render (<=45 min)
     steps:
       - uses: actions/checkout@v4
 
@@ -80,6 +85,13 @@ jobs:
           if [ "$DO_UPLOAD" = "true" ]; then
             [ -n "$YT_ID" ] && [ -n "$YT_SECRET" ] && [ -n "$YT_REFRESH" ] || { echo "::error::YouTube secret(s) missing"; exit 1; }
           fi
+
+      - name: Random minute tak intezar (sirf scheduled run)
+        if: github.event_name == 'schedule'
+        run: |
+          DELAY=$(( RANDOM % (MAX_DELAY_MIN + 1) ))
+          echo "Is ghante ke andar $DELAY minute ruk kar shuru karenge"
+          sleep $(( DELAY * 60 ))
 
       - name: Setup Python
         uses: actions/setup-python@v5
